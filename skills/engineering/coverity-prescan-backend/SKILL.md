@@ -1,18 +1,18 @@
 ---
-name: coverity-prescan
-description: "Coverity Pre-Scan Review — Security-focused code review that checks C#/.NET code against Coverity's 21 checker patterns BEFORE the actual scan. Catches RESOURCE_LEAK, null dereference, CSRF, SQL injection, hardcoded credentials, and 15+ other issue types using pattern matching. Reduces scan-fix-rescan cycles. Trigger on /coverity-prescan, or when user asks to pre-check code for Coverity issues, review code before Coverity scan, or says 'prescan' or 'pre-scan coverity'."
+name: coverity-prescan-backend
+description: "Coverity Pre-Scan Backend — Security-focused code review that checks C#/.NET backend code against Coverity's 21 checker patterns BEFORE the actual scan. Catches RESOURCE_LEAK, null dereference, CSRF, SQL injection, hardcoded credentials, and 15+ other issue types using pattern matching. Reduces scan-fix-rescan cycles. Trigger on /coverity-prescan-backend, or when user asks to pre-check backend code for Coverity issues, or says 'prescan backend'."
 ---
 
-# Coverity Pre-Scan Review — Catch Issues Before They're Found
+# Coverity Pre-Scan Backend — Catch C#/.NET Issues Before They're Found
 
 Security-focused code review that checks C#/.NET backend code against all 21 Coverity checker patterns BEFORE submitting to the actual Coverity scan. Uses pattern matching, grep, and code reading to catch issues early and reduce scan-fix-rescan cycles.
 
 ## Usage
 ```
-/coverity-prescan                        # Scan all .cs files in current project
-/coverity-prescan <path>                 # Scan specific file or directory
-/coverity-prescan --changed-only         # Scan only git-modified files
-/coverity-prescan --checkers RESOURCE_LEAK,CSRF  # Scan specific checker types only
+/coverity-prescan-backend                        # Scan all .cs files in current project
+/coverity-prescan-backend <path>                 # Scan specific file or directory
+/coverity-prescan-backend --changed-only         # Scan only git-modified files
+/coverity-prescan-backend --checkers RESOURCE_LEAK,CSRF  # Scan specific checker types only
 ```
 
 ## How It Works

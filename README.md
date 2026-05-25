@@ -2,7 +2,7 @@
 
 Claude Code custom skills for .NET / SharePoint / frontend development, engineering communication, and CI/CD pipeline management.
 
-## Skills (11 skills + 8 CI/CD commands)
+## Skills (12 skills + 8 CI/CD commands)
 
 ### Engineering
 
@@ -14,7 +14,8 @@ Claude Code custom skills for .NET / SharePoint / frontend development, engineer
 | [`blackduck-nuget`](skills/engineering/blackduck-nuget/SKILL.md) | `/blackduck-nuget` | Analyze Black Duck scans, compare against baselines, upgrade .NET Framework packages to resolve security/operational/license risks |
 | [`coverity-frontend`](skills/engineering/coverity-frontend/SKILL.md) | `/coverity-frontend` | Fix Coverity DOM_XSS and URL_MANIPULATION issues in frontend JS/HTML with 17 proven fix patterns |
 | [`coverity-backend`](skills/engineering/coverity-backend/SKILL.md) | `/coverity-backend` | Fix Coverity RESOURCE_LEAK, FORWARD_NULL, CSRF, and 7+ other checkers for C#/.NET backend code |
-| [`coverity-prescan`](skills/engineering/coverity-prescan/SKILL.md) | `/coverity-prescan` | Pre-scan code review against 21 Coverity checker patterns — catch issues before the actual scan |
+| [`coverity-prescan-backend`](skills/engineering/coverity-prescan-backend/SKILL.md) | `/coverity-prescan-backend` | Pre-scan C#/.NET code against 21 Coverity checker patterns before scan |
+| [`coverity-prescan-frontend`](skills/engineering/coverity-prescan-frontend/SKILL.md) | `/coverity-prescan-frontend` | Pre-scan JS/HTML code against 14 DOM_XSS + 3 URL_MANIPULATION patterns before scan |
 
 ### Productivity
 
@@ -99,7 +100,8 @@ napat-skills/
     │   ├── blackduck-nuget/
     │   ├── coverity-frontend/
     │   ├── coverity-backend/
-    │   └── coverity-prescan/
+    │   ├── coverity-prescan-backend/
+    │   └── coverity-prescan-frontend/
     ├── productivity/       # Communication, process
     │   ├── post-mortem/
     │   └── management-talk/
