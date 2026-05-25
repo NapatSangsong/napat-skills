@@ -6,9 +6,32 @@ Claude Code custom skills for .NET / SharePoint development workflows.
 
 ### Engineering
 
-| Skill | Description |
-|-------|-------------|
-| `nuget-audit` | NuGet Package Audit & Fix — Scan, audit, and fix package version conflicts in .NET Framework solutions |
+| Skill | Trigger | Description |
+|-------|---------|-------------|
+| [`nuget-audit`](skills/engineering/nuget-audit/SKILL.md) | `/nuget-audit`, TypeLoadException, MissingMethodException | Scan, audit, and fix NuGet package version conflicts across all .NET project types |
+
+### nuget-audit
+
+Supports **all .NET project types**:
+
+| Project Type | Detection | Package System |
+|---|---|---|
+| .NET Framework 4.x | `packages.config` | packages.config + binding redirects |
+| .NET Core / .NET 5-10+ | `<PackageReference>` in csproj | SDK-style csproj + `dotnet` CLI |
+| Central Package Management | `Directory.Packages.props` | PackageVersion in props |
+| Multi-targeting | `<TargetFrameworks>` | Verifies ALL target frameworks |
+
+**What it detects:**
+- Cross-project version conflicts
+- Wrong / missing / stale binding redirects (.NET Framework)
+- TFM incompatibility (SDK-style)
+- Diamond & transitive dependency conflicts
+- API-breaking version jumps (AngleSharp, Microsoft.Graph, EF Core, AutoMapper, MediatR, etc.)
+- Phantom namespace migrations (e.g., `PnP.Framework.Pages` that doesn't exist)
+- Deprecated / vulnerable packages (`dotnet list package --vulnerable`)
+
+**What it fixes (config only, no code changes):**
+- `packages.config`, `.csproj`, `Web.config`, `app.config`, `Directory.Packages.props`
 
 ## Installation
 
@@ -22,9 +45,8 @@ ln -s ~/work/napat-skills/skills/engineering/nuget-audit ~/.claude/skills/nuget-
 
 ## Usage
 
-In Claude Code:
 ```
 /nuget-audit
 ```
 
-Or trigger automatically by pasting a `TypeLoadException` / `MissingMethodException` stack trace.
+Or trigger automatically by pasting a stack trace with `TypeLoadException`, `MissingMethodException`, or `FileLoadException`.
