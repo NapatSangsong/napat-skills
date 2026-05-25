@@ -121,6 +121,18 @@ For each fix, edit:
 - Always keep the binding redirect `oldVersion` range wide enough to cover both the old and new version requests
 - .NET Framework loads assemblies lazily (type-level) — if a code path doesn't reference a type, the assembly won't be loaded
 
+**CRITICAL — Verify before proposing namespace migration:**
+- NEVER assume a successor package has the same namespace. Always verify:
+  1. **Check the NuGet package page** for the actual DLL contents and target frameworks
+  2. **Check GitHub source** for the exact namespace (e.g., browse `src/lib/{Package}/Pages/` directory)
+  3. **Check GitHub issues** for migration reports (e.g., "missing method", "missing namespace")
+  4. **WebFetch the actual URL** to confirm the namespace directory/class exists (404 = doesn't exist)
+- Known traps where namespace migration FAILS:
+  - `OfficeDevPnP.Core.Pages` → `PnP.Framework.Pages` — **DOES NOT EXIST**. Pages API moved to PnP.Core SDK as `IPage` interface (completely different API)
+  - `Microsoft.Graph` 1.x-4.x → 5.x+ — Kiota rewrite, entirely new class hierarchy
+  - `System.Web.Http` → `Microsoft.AspNetCore.Mvc` — fundamentally different framework
+- If migration requires code changes and the user says "no code changes", propose version downgrade instead
+
 ### Phase 7: Verify
 
 After applying fixes:
@@ -152,6 +164,16 @@ After applying fixes:
 **Symptom**: Redirect points to old version, but packages.config has newer version installed
 **Cause**: Package was upgraded but redirect wasn't updated (common in packages.config projects)
 **Fix**: Update redirect `newVersion` to match installed assembly version.
+
+### Pattern: Phantom namespace migration
+**Symptom**: Proposing `using OldLib.Namespace;` → `using NewLib.Namespace;` but the new namespace doesn't exist.
+**Cause**: Successor package restructured or removed the API entirely. Common when libraries are rewritten (OfficeDevPnP.Core → PnP.Framework, Microsoft.Graph 4.x → 5.x).
+**Prevention**: Before proposing ANY namespace change, run this verification chain:
+1. WebFetch the GitHub source tree URL for the expected namespace directory → expect 200, not 404
+2. Search GitHub issues for "missing" + the class name → find migration reports
+3. Check the NuGet package dependencies page → confirm the package actually exports the namespace
+4. If the namespace doesn't exist, fall back to version downgrade (keep old library + compatible dependency version)
+**Example**: `PnP.Framework.Pages.ClientSidePage` doesn't exist. `ClientSidePage.Load()` only exists in `OfficeDevPnP.Core.Pages`. PnP.Framework uses `IPage` from PnP.Core SDK — completely different API.
 
 ### Pattern: netstandard2.0 support dropped
 **Symptom**: Build or runtime error when using a NuGet package on .NET Framework 4.8
