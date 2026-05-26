@@ -379,6 +379,20 @@ sed -i 's|old\path|new\path|g' file
 4. **Check actual package contents** — Package structure changes between major versions (paths, TFM folders)
 5. **Both directories** — Always update source (for build) AND scan directory (for Black Duck)
 6. **Assembly version != NuGet version** — Map correctly (e.g., NuGet 10.0.8 → Assembly 10.0.0.8)
+7. **Deeper scans find more transitive deps** — Component count can increase (71→137) without any code change; always check if "new" items existed before
+8. **Black Duck misclassifies some MIT licenses** — PnP.Framework, SharePoint CSOM show "Unknown License" despite being MIT; mark as "Reviewed" in BD
+9. **Regression ≠ code change** — Op MEDIUM/Lic HIGH can increase from scanner detecting pre-existing dependencies; explain root cause in report
+10. **Use python csv.DictReader for CSV parsing** — Black Duck CSVs have commas inside quoted fields; simple awk/cut parsing breaks column alignment
+
+## Common False Positives (Black Duck License Misclassification)
+
+| Component | BD Says | Actual License | Action |
+|-----------|---------|---------------|--------|
+| PnP.Framework | Unknown License | MIT (GitHub) | Mark Reviewed |
+| SharePoint CSOM | Unknown License | Microsoft proprietary | Mark Reviewed |
+| icebox | Unknown License | Varies | Investigate |
+| YCSoft.WebAPI.Utiltity | License Not Found | Custom/internal | Mark Reviewed |
 
 ## Reference
-- PTTGC.KBS: 85 op-risk → 54, 27 resolved, 0 new. Security 9→6. License 5→6 (1 Black Duck reclassification).
+- PTTGC.KBS round 1: 85 op-risk → 54, 27 resolved, 0 new. Security 9→6. License 5→6 (1 BD reclassification).
+- PTTGC.KBS round 2: Baseline (71) vs version 4 (137). Op HIGH -9, Sec MEDIUM -3, 3 vulns resolved. +1 Op MED / +1 Lic HIGH from deeper scan (not code change).
