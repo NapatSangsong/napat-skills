@@ -661,7 +661,7 @@ Create `docs/coverity-fix-{date}-{round}.md` with:
 
 | Project | Stream | Checkers | CIDs Fixed | New Issues |
 |---------|--------|----------|------------|------------|
-| PTTGC.KBS | gc-kbs-backend | CSRF, RESOURCE_LEAK, FORWARD_NULL | 9 + global CSRF filter | awaiting scan |
+| PTTGC.KBS | gc-kbs-backend | CSRF, RESOURCE_LEAK, FORWARD_NULL | 9 CIDs + global CSRF filter | **0 new issues** |
 
 ### CSRF Fix Evolution (3 iterations to success)
 
@@ -669,7 +669,7 @@ Create `docs/coverity-fix-{date}-{round}.md` with:
 |-------|----------|--------|
 | 1 | `[System.Web.Mvc.ValidateAntiForgeryToken]` per-method | **FAILED** — Coverity ignores MVC attribute on ApiController |
 | 2 | Separate `Filters/ValidateAntiForgeryTokenFilter.cs` + csproj | **FAILED** — CS0246 build error (class not found) |
-| 3 | Inline filter class in `WebApiConfig.cs` + fully qualified types + global registration | **BUILD PASSED** — awaiting Coverity scan |
+| 3 | Inline filter class in `WebApiConfig.cs` + fully qualified types + global registration | **SCAN PASSED** |
 
 ## Key Lessons Learned
 
