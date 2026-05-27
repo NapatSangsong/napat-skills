@@ -1,6 +1,6 @@
 ---
 name: blackduck-nuget
-description: "Fix Black Duck NuGet — Analyze Black Duck scan results for .NET Framework (4.x) NuGet projects, compare against a baseline version, identify NEW risk items (Operational/Security/License), and upgrade packages to resolve them while respecting .NET Framework compatibility constraints. Trigger on /blackduck-nuget, or when user reports Black Duck operational/security/license risk items, asks to fix Black Duck scan results, or says 'fix blackduck'."
+description: "Fix Black Duck NuGet — Analyze Black Duck scan results for .NET Framework (4.x) NuGet projects, compare against a baseline version, identify NEW risk items (Operational/Security/License), upgrade packages, and generate waive reports (Excel). Trigger on /blackduck-nuget, or when user reports Black Duck operational/security/license risk items, asks to fix/waive Black Duck scan results, says 'fix blackduck', or says 'waive blackduck'."
 ---
 
 # Fix Black Duck NuGet — Scan, Compare, and Upgrade .NET Framework packages
@@ -13,6 +13,7 @@ Analyze Black Duck scan results for .NET Framework (4.x) NuGet projects, compare
 /blackduck-nuget compare <baseline> <current>                   # Compare two versions
 /blackduck-nuget upgrade <package-name> <target-version>        # Upgrade specific package
 /blackduck-nuget report                                         # Generate remediation report
+/blackduck-nuget waive <before-dir> <after-dir> <output.xlsx>   # Generate waive report from PDF exports
 ```
 
 ## Instructions
@@ -241,6 +242,458 @@ Common build errors and fixes:
 3. Push to repository
 ```
 
+### Phase 9: Generate Waive Report (Excel) from PDF Exports
+
+When BD API is unavailable or user provides PDF exports from the BD web UI.
+
+```
+Usage: /blackduck-nuget waive
+  → Interactive: asks user for paths step by step (preferred)
+
+/blackduck-nuget waive <before-dir> <after-dir> <output.xlsx>
+  → Direct: all paths provided upfront
+```
+
+#### 9-PREREQ. Gather Inputs (Interactive)
+
+```
+If paths are not provided as arguments, ASK the user:
+
+Step 1: "Before (baseline) PDF folder อยู่ที่ไหนครับ?"
+  → User provides path to folder containing baseline PDFs
+  → Auto-discover PDFs: ls the folder, find *operationalrisk*.pdf, *licenserisk*.pdf, *securityrisk*.pdf
+  → If any PDF missing, ask: "ไม่พบไฟล์ {type} risk PDF — มีไฟล์ชื่ออื่นมั้ยครับ?"
+
+Step 2: "After (current scan) PDF folder อยู่ที่ไหนครับ?"
+  → Same discovery process
+
+Step 3: "ต้องการบันทึกไฟล์ waive report (.xlsx) ไว้ที่ไหนครับ?"
+  → Default suggestion: same directory as After folder
+
+Step 4: "มีไฟล์ waive report เก่าที่ต้องการ copy รูปมาด้วยมั้ยครับ? (optional)"
+  → If yes: load old xlsx for image copying
+  → If no: skip image copying
+
+Step 5: Confirm project details:
+  "Project: {name}, Baseline: {version}, Current: {version} — ถูกต้องมั้ยครับ?"
+  → Extract project name and version from PDF headers automatically
+```
+
+#### 9A. Extract Data from PDFs
+
+```
+1. Read each PDF with the Read tool (Claude reads PDFs natively as images)
+2. For each page, extract the component table rows:
+   - Component: full name including version (e.g., "jQuery 3.3.1")
+   - Operational Risk: HIGH / MEDIUM / LOW / None
+   - Security Risk: vuln count numbers (e.g., "2 1 1" = 2H 1M 1L)
+   - License: license name and severity marker (H/M)
+3. Build Python lists from extracted data (see template below)
+4. Cross-check: count HIGH items vs header summary — BD PDFs sometimes
+   miss 1-2 items at page boundaries. Document any discrepancy.
+
+CRITICAL PITFALLS:
+- BD shows ALL versions of a component separately (e.g., Json.NET 10.0.3 AND 13.0.4)
+  → List EVERY version as a separate row. Do NOT merge or deduplicate.
+- BD Op Risk PDF may show items with both Sec Risk AND Op Risk columns
+  → Extract Op Risk severity from the LAST column (rightmost)
+- The same component may appear in multiple risk PDFs with different data
+  → Op Risk PDF is the master for operational risk items
+  → Sec Risk PDF is the master for security risk items
+  → Lic Risk PDF is the master for license risk items
+```
+
+#### 9B. Compare Before vs After
+
+```
+1. Build lookup sets from Before data:
+   before_op  = {("Component Name Version", "SEVERITY"), ...}
+   before_sec = {("Component Name Version", "Severity"), ...}
+   before_lic = {("Component Name Version", "SEVERITY"), ...}
+
+2. For each After item, classify:
+   - EXISTING: exact name+version match in Before → Remark=""
+   - NEW: name+version NOT in Before → Remark="NEW"
+   - VERSION_CHANGED: same component name but different version → note in Remark
+
+3. Count REMOVED items (in Before but not in After) for the summary
+
+4. Calculate deltas for Overview:
+   Category    | Baseline (from Before header) | Current (COUNTIF from sheet) | Delta
+   Sec HIGH    | {N}                          | =COUNTIF(...)                | =C-B
+   Sec MED     | {N}                          | =COUNTIF(...)                | =C-B
+   Op HIGH     | {N}                          | =COUNTIF(...)                | =C-B
+   Op MED      | {N}                          | =COUNTIF(...)                | =C-B
+   Lic HIGH    | {N}                          | =COUNTIF(...)                | =C-B
+   Lic MED     | {N}                          | =COUNTIF(...)                | =C-B
+```
+
+#### 9C. Excel Structure
+
+```
+Sheet order (MUST follow this exact order):
+1. Overview            — Summary table + COUNTIF formulas + Key Changes text
+2. SecurityRisk        — All After Sec HIGH+MED items with waive justification
+3. LicenseRisk         — All After Lic HIGH+MED items with waive justification
+4. OperationRisk       — All After Op HIGH+MED items with waive justification
+5. L1..LN              — 1 detail sheet per License Risk item (title, severity, URL, screenshot)
+6. _Baseline_SecRisk   — Before Sec Risk data (sheet_state="hidden")
+7. _Baseline_LicRisk   — Before Lic Risk data (sheet_state="hidden")
+8. _Baseline_OpRisk    — Before Op Risk data (sheet_state="hidden")
+9. .net48              — Optional: .NET FW compatibility screenshots
+
+Column schemas:
+SecurityRisk:
+  No. | Component | Severity | Fix | Impact | Mitigation | Reference | TC Result(Agree/Disagree)
+
+LicenseRisk:
+  No. | Component | Severity | Commercial Impact(Yes/No) | Fix | Lib URLs |
+  Link Image | Impact | Migration | Dependency/Reason | Reference | TC Result(Agree/Disagree)
+
+OperationRisk:
+  No. | Component | Search Name | Severity | Fix | Impact | Mitigation |
+  Reference | Remark | TC Result(Agree/Disagree)
+
+Baseline hidden sheets:
+  No. | Component | Severity | (extra columns vary)
+
+Severity casing convention:
+  - SecurityRisk uses "High"/"Medium" (title case) ← matches BD web UI
+  - LicenseRisk uses "HIGH"/"MEDIUM" (uppercase)
+  - OperationRisk uses "HIGH"/"MEDIUM" (uppercase)
+  - COUNTIF formulas must match the exact casing used in each sheet
+```
+
+#### 9D. Python Script Template (openpyxl)
+
+Write a Python script to `/tmp/create_waive.py` and execute it. Adapt the data arrays to match the specific project.
+
+```python
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+OUT = "<output.xlsx path>"
+OLD = "<old.xlsx path or None>"  # for image copying
+
+# ─── Styles ───
+HEADER_FILL = PatternFill("solid", fgColor="4472C4")
+HEADER_FONT = Font(bold=True, size=11, color="FFFFFF")
+RED_FILL    = PatternFill("solid", fgColor="FFC7CE")
+YELLOW_FILL = PatternFill("solid", fgColor="FFEB9C")
+NEW_FILL    = PatternFill("solid", fgColor="DDEBF7")
+WRAP        = Alignment(wrap_text=True, vertical="top")
+WRAP_CENTER = Alignment(wrap_text=True, vertical="top", horizontal="center")
+THIN_BORDER = Border(*(Side(style="thin"),)*4)
+
+def style_header(ws, row, ncols):
+    for c in range(1, ncols+1):
+        cell = ws.cell(row=row, column=c)
+        cell.font, cell.fill, cell.alignment, cell.border = HEADER_FONT, HEADER_FILL, WRAP_CENTER, THIN_BORDER
+
+def style_data(ws, row, ncols):
+    for c in range(1, ncols+1):
+        cell = ws.cell(row=row, column=c)
+        cell.alignment, cell.border = WRAP, THIN_BORDER
+
+# ════════════════════════════════════════════
+# DATA — Populate these arrays from PDF extraction
+# ════════════════════════════════════════════
+
+# Security Risk — After (current scan)
+# (Component, Severity, Fix, Impact_TH, Mitigation_TH, Reference)
+SEC_RISK = [
+    # ... extract from After security risk PDF
+]
+
+# License Risk — After
+# (Component, Severity, CommercialImpact, Fix, LibURL, Impact_TH, Migration_TH, Dependency_TH, Reference)
+LIC_RISK = [
+    # ... extract from After license risk PDF
+]
+
+# Operational Risk — After
+# (Component, SearchName, Severity, Fix, Impact_TH, Mitigation_TH, Remark)
+# Remark: "NEW" if not in baseline, "" if existed
+OP_RISK = [
+    # ... extract from After operational risk PDF
+]
+
+# Baseline data (Before scan) — for hidden comparison sheets
+BASELINE_SEC = [  # (Component, Severity, VulnCount)
+]
+BASELINE_LIC = [  # (Component, Severity, License)
+]
+BASELINE_OP  = [  # (Component, Severity)
+]
+
+# Header counts from Before PDF (for Overview baseline column)
+BEFORE_COUNTS = {
+    "sec_high": 0, "sec_med": 0,
+    "op_high": 0, "op_med": 0,
+    "lic_high": 0, "lic_med": 0,
+}
+
+PROJECT_NAME = "gc-kbs-backend"
+BASELINE_VERSION = "20260515 1042"
+CURRENT_VERSION = "4"
+REPORT_DATE = "2026-05-27"
+
+# ════════════════════════════════════════════
+# CREATE WORKBOOK
+# ════════════════════════════════════════════
+wb = openpyxl.Workbook()
+
+# ── Overview ──
+ws = wb.active
+ws.title = "Overview"
+ws.sheet_properties.tabColor = "4472C4"
+ws["A1"] = "Black Duck Waive Report"
+ws["A1"].font = Font(bold=True, size=14)
+ws["A3"] = f"Project: {PROJECT_NAME}"
+ws["A4"] = f"Baseline: {BASELINE_VERSION}"
+ws["A5"] = f"Current: Version {CURRENT_VERSION}"
+ws["A6"] = "Package versions: Visual Studio packages.config (actual installed)"
+ws["A7"] = f"Report date: {REPORT_DATE}"
+
+# Summary table row 9 = header, rows 10-15 = data
+for i, h in enumerate(["Risk", "Baseline", "Current", "Delta"], 1):
+    c = ws.cell(row=9, column=i, value=h)
+    c.font, c.fill, c.alignment, c.border = HEADER_FONT, HEADER_FILL, WRAP_CENTER, THIN_BORDER
+
+summary = [
+    ("Sec HIGH",  BEFORE_COUNTS["sec_high"], '=COUNTIF(SecurityRisk!C:C,"High")'),
+    ("Sec MED",   BEFORE_COUNTS["sec_med"],  '=COUNTIF(SecurityRisk!C:C,"Medium")'),
+    ("Op HIGH",   BEFORE_COUNTS["op_high"],  '=COUNTIF(OperationRisk!D:D,"HIGH")'),
+    ("Op MED",    BEFORE_COUNTS["op_med"],   '=COUNTIF(OperationRisk!D:D,"MEDIUM")'),
+    ("Lic HIGH",  BEFORE_COUNTS["lic_high"], '=COUNTIF(LicenseRisk!C:C,"HIGH")'),
+    ("Lic MED",   BEFORE_COUNTS["lic_med"],  '=COUNTIF(LicenseRisk!C:C,"MEDIUM")'),
+]
+for i, (label, base, formula) in enumerate(summary, 10):
+    ws.cell(row=i, column=1, value=label).font = Font(bold=True)
+    ws.cell(row=i, column=2, value=base)
+    ws.cell(row=i, column=3, value=formula)
+    ws.cell(row=i, column=4, value=f"=C{i}-B{i}")
+    for c in range(1,5): ws.cell(row=i, column=c).border = THIN_BORDER
+
+# Key Changes text (customize per project)
+ws["A17"] = "Key Changes (Before -> After):"
+ws["A17"].font = Font(bold=True)
+# ws["A18"] = "..."  # Add specific change descriptions
+
+ws.column_dimensions["A"].width = 22
+ws.column_dimensions["B"].width = 12
+ws.column_dimensions["C"].width = 12
+ws.column_dimensions["D"].width = 12
+
+# ── SecurityRisk ──
+ws_sec = wb.create_sheet("SecurityRisk")
+ws_sec.sheet_properties.tabColor = "FF0000"
+sec_h = ["No.", "Component", "Severity", "Fix", "Impact", "Mitigation", "Reference", "TC Result\n(Agree/Disagree)"]
+for i, h in enumerate(sec_h, 1): ws_sec.cell(row=1, column=i, value=h)
+style_header(ws_sec, 1, len(sec_h))
+for idx, (comp, sev, fix, impact, mit, ref) in enumerate(SEC_RISK, 1):
+    r = idx + 1
+    for c, v in enumerate([idx, comp, sev, fix, impact, mit, ref, ""], 1):
+        ws_sec.cell(row=r, column=c, value=v)
+    style_data(ws_sec, r, len(sec_h))
+    sev_cell = ws_sec.cell(row=r, column=3)
+    sev_cell.fill = RED_FILL if sev == "High" else YELLOW_FILL if sev == "Medium" else PatternFill()
+ws_sec.column_dimensions["B"].width = 45
+ws_sec.column_dimensions["E"].width = 55
+ws_sec.column_dimensions["F"].width = 55
+
+# ── LicenseRisk ──
+ws_lic = wb.create_sheet("LicenseRisk")
+ws_lic.sheet_properties.tabColor = "FF6600"
+lic_h = ["No.", "Component", "Severity", "Commercial Impact\n(Yes/No)", "Fix", "Lib URLs",
+         "Link Image", "Impact", "Migration", "Dependency / Reason", "Reference", "TC Result\n(Agree/Disagree)"]
+for i, h in enumerate(lic_h, 1): ws_lic.cell(row=1, column=i, value=h)
+style_header(ws_lic, 1, len(lic_h))
+for idx, (comp, sev, comm, fix, url, impact, mig, dep, ref) in enumerate(LIC_RISK, 1):
+    r = idx + 1
+    for c, v in enumerate([idx, comp, sev, comm, fix, url,
+                           f"=HYPERLINK(\"#'L{idx}'!A1\",\"-> L{idx}\")",
+                           impact, mig, dep, ref, ""], 1):
+        ws_lic.cell(row=r, column=c, value=v)
+    style_data(ws_lic, r, len(lic_h))
+    sev_cell = ws_lic.cell(row=r, column=3)
+    sev_cell.fill = RED_FILL if sev == "HIGH" else YELLOW_FILL if sev == "MEDIUM" else PatternFill()
+ws_lic.column_dimensions["B"].width = 45
+ws_lic.column_dimensions["F"].width = 50
+ws_lic.column_dimensions["I"].width = 45
+ws_lic.column_dimensions["J"].width = 45
+
+# ── OperationRisk ──
+ws_op = wb.create_sheet("OperationRisk")
+ws_op.sheet_properties.tabColor = "FFC000"
+op_h = ["No.", "Component", "Search Name", "Severity", "Fix", "Impact", "Mitigation", "Reference", "Remark", "TC Result\n(Agree/Disagree)"]
+for i, h in enumerate(op_h, 1): ws_op.cell(row=1, column=i, value=h)
+style_header(ws_op, 1, len(op_h))
+for idx, (comp, search, sev, fix, impact, mit, remark) in enumerate(OP_RISK, 1):
+    r = idx + 1
+    for c, v in enumerate([idx, comp, search, sev, fix, impact, mit, "", remark, ""], 1):
+        ws_op.cell(row=r, column=c, value=v)
+    style_data(ws_op, r, len(op_h))
+    ws_op.cell(row=r, column=4).fill = RED_FILL if sev == "HIGH" else YELLOW_FILL if sev == "MEDIUM" else PatternFill()
+    if remark == "NEW":
+        ws_op.cell(row=r, column=9).fill = NEW_FILL
+ws_op.column_dimensions["B"].width = 50
+ws_op.column_dimensions["C"].width = 40
+ws_op.column_dimensions["F"].width = 45
+ws_op.column_dimensions["G"].width = 55
+
+# ── L1..LN detail sheets ──
+for idx, (comp, sev, comm, fix, url, impact, mig, dep, ref) in enumerate(LIC_RISK, 1):
+    ws_l = wb.create_sheet(f"L{idx}")
+    ws_l.cell(row=1, column=1, value=f"L{idx}: {comp}").font = Font(bold=True, size=12)
+    ws_l.cell(row=2, column=1, value=f"Severity: {sev}").font = Font(bold=True, size=11,
+        color="FF0000" if sev == "HIGH" else "FF8C00")
+    ws_l.cell(row=3, column=1, value=f"License Issue: {mig}")
+    ws_l.cell(row=4, column=1, value=f"Dependency: {dep}")
+    ws_l.cell(row=6, column=1, value="URL:")
+    ws_l.cell(row=6, column=2, value=url)
+    ws_l.column_dimensions["A"].width = 20
+    ws_l.column_dimensions["B"].width = 80
+
+# ── Baseline hidden sheets ──
+for name, data, cols in [
+    ("_Baseline_SecRisk", BASELINE_SEC, ["No.", "Component", "Severity", "Vuln Count"]),
+    ("_Baseline_LicRisk", BASELINE_LIC, ["No.", "Component", "Severity", "License"]),
+    ("_Baseline_OpRisk",  BASELINE_OP,  ["No.", "Component", "Severity"]),
+]:
+    ws_b = wb.create_sheet(name)
+    for i, h in enumerate(cols, 1): ws_b.cell(row=1, column=i, value=h)
+    style_header(ws_b, 1, len(cols))
+    for i, row_data in enumerate(data, 1):
+        ws_b.cell(row=i+1, column=1, value=i)
+        for c, v in enumerate(row_data, 2): ws_b.cell(row=i+1, column=c, value=v)
+        style_data(ws_b, i+1, len(cols))
+    ws_b.column_dimensions["B"].width = 55
+    ws_b.sheet_state = "hidden"
+
+# ── Copy images from old workbook (if available) ──
+if OLD:
+    try:
+        old_wb = openpyxl.load_workbook(OLD)
+        for old_name in old_wb.sheetnames:
+            if old_name in wb.sheetnames:
+                for img in old_wb[old_name]._images:
+                    wb[old_name].add_image(img)
+            elif old_name == ".net48":
+                ws_net = wb.create_sheet(".net48")
+                for img in old_wb[old_name]._images:
+                    ws_net.add_image(img)
+    except Exception as e:
+        print(f"Warning: image copy failed: {e}")
+
+wb.save(OUT)
+print(f"Saved: {OUT}")
+print(f"Sheets: {wb.sheetnames}")
+```
+
+#### 9E. Waive Text Patterns (Thai)
+
+Use these patterns for the Impact and Mitigation columns. Replace `{parent}`, `{version}`, `{replacement}` with actual values.
+
+```
+OPERATIONAL RISK — Mitigation patterns:
+  asp_framework:     "เป็น Core Framework ของ Project"
+  asp_dependency:    "เป็น Dependency ของ ASP.NET Web API"
+  asp_mvc_dep:       "เป็น ASP.NET MVC dependency"
+  frontend:          "เป็น Frontend Library ใช้ใน SharePoint SitePages"
+  frontend_dep:      "เป็น Frontend dependency ของ {parent}"
+  project_dep:       "เป็น Dependency Library ของ Project"
+  project_main_dep:  "เป็น Dependency หลักของ Project"
+  locked:            "Locked โดย {parent} ไม่สามารถ upgrade ได้"
+  transitive:        "เป็น Transitive Dependency"
+  transitive_deep:   "เป็น Transitive Dependency — ถูก detect จาก deeper scan"
+  deprecated:        "เป็น Deprecated library แนะนำย้ายเป็น {replacement} แต่ยังจำเป็นสำหรับ legacy code"
+  at_max:            "Max version สำหรับ .NET Framework 4.8 ({version}) — .NET 6+ only สำหรับ version ใหม่กว่า"
+  latest:            "Update เป็น version ล่าสุดแล้ว"
+  system_lib:        "เป็น .NET Framework system library — ได้รับ patch ผ่าน Windows Update"
+
+OPERATIONAL RISK — Impact patterns:
+  auth:              "Library ในการ Authentication ผ่าน Azure AD ({lib_name})"
+  html_parse:        "Library ในการ Parse HTML"
+  expr_parser:       "Expression Parser"
+  ui_framework:      "Library ในการทำ UI/CSS Framework ของ Frontend"
+  excel_io:          "Library ในการอ่าน/เขียนไฟล์ Excel"
+  auth_token:        "Library ในการจัดการ Authentication Token"
+  dom_event:         "Library ในการจัดการ DOM / Event ของ Frontend"
+  form_validation:   "Library ในการตรวจสอบ Form Validation ของ Frontend"
+  jwt:               "Library ในการจัดการ JWT Token"
+  json:              "Library ในการ Serialize/Deserialize JSON"
+  cors:              "CORS Support"
+  framework:         "ASP.NET {name} Framework"
+  graph_api:         "Microsoft Graph API / Azure AD Graph API"
+  key_vault:         "Library เชื่อมต่อ Azure Key Vault"
+  reporting:         "Library ในการทำ Reporting (RDL)"
+  odata:             "OData protocol library"
+  tooltip:           "Library ในการทำ Tooltip/Popover ของ Bootstrap"
+  razor:             "Razor View Engine"
+  swagger:           "API Documentation (Swagger)"
+  data_annotation:   "Library ในการทำ Data Annotation / Validation"
+  file_acl:          "Library ในการจัดการ File System ACL"
+  http_req:          "Library ในการเรียก HTTP Request"
+  win_identity:      "Library ในการจัดการ Windows Identity"
+  css_minify:        "CSS/JS Minification"
+  blob_storage:      "Azure Blob/Table Storage"
+
+SECURITY RISK — Mitigation patterns:
+  locked_parent:     "เป็น Dependency ที่ถูก Lock ผ่าน {parent} ไม่สามารถอัปเกรดได้อิสระ ใช้งานภายใน Intranet เท่านั้น"
+  frontend_only:     "เป็น Frontend Library ใช้ใน SharePoint SitePages เท่านั้น ไม่ได้ใช้ประมวลผลข้อมูลที่ sensitive"
+  client_validate:   "เป็น Frontend Library ใช้ใน SharePoint SitePages เท่านั้น การ Validate ฝั่ง Client เป็นส่วนเสริม มี Server-side validation เป็นหลัก"
+  controlled_input:  "ใช้ deserialize JSON จากแหล่งที่ระบบควบคุมเองเท่านั้น (Configuration, Internal API) ไม่รับ JSON จาก external untrusted source โดยตรง"
+  windows_update:    "เป็น .NET Framework System Library จะได้รับ Security Patch ผ่าน Windows Update ของ Server โดยตรง"
+
+LICENSE RISK — Migration (license issue description) patterns:
+  unknown_false:     "BD จัดเป็น Unknown License — match score ต่ำ {N}% (false positive เป็น {actual_lang} library)"
+  mit_misclass:      "MIT License จริง (GitHub) — BD จัดเป็น Unknown เพราะไม่พบ license file ใน NuGet package"
+  ms_proprietary:    "Microsoft proprietary license — BD ไม่รู้จัก แต่เป็น official Microsoft package"
+  ms_standard:       "Microsoft license เป็น standard .NET license"
+  internal:          "License Not Found — Internal library ไม่มี license บน registry"
+  ms_license_terms:  "Microsoft License Terms — Product or Version Unspecified"
+```
+
+#### 9F. Lessons Learned (Waive Report Pitfalls)
+
+```
+1. EXTRACT EVERY ITEM from every PDF page — do NOT skip items at page boundaries.
+   The most common error is missing items. Count your extracted items and compare
+   with the PDF header summary counts.
+
+2. BD shows MULTIPLE VERSIONS of the same component separately.
+   e.g., "Microsoft ASP.NET Web API Client Libraries" may appear as 5.2.3, 5.2.7, AND 5.2.8.
+   Each is a separate row. Missing one = wrong count.
+
+3. Version numbers in BD ≠ NuGet package versions.
+   e.g., BD shows "Json.NET 10.0.3" but NuGet package is "Newtonsoft.Json 10.0.3".
+   Always use the BD display name in the waive report.
+
+4. When comparing Before→After, match by EXACT "Component Name Version" string.
+   "odata.net 5.8.4" (Before) ≠ "odata.net 5.8.5" (After) — treat as version changed.
+
+5. "NEW" items are NOT always regressions. Common causes:
+   - Deeper scan detection (scanner found more transitive deps)
+   - Version upgrade caused BD to re-analyze
+   - BD reclassification of existing risk
+   Document the actual cause in the Remark column.
+
+6. Image handling with openpyxl:
+   - Load old workbook → access ws._images list → add_image() to new sheet
+   - Images have anchor positions that persist
+   - If sheet row count changed, images may not align to correct rows
+   - Cannot create new BD screenshots from code — these must come from old file or manual capture
+
+7. Severity casing MUST be consistent within each sheet:
+   - SecurityRisk: "High"/"Medium" (title case) — this is how BD displays it
+   - LicenseRisk/OperationRisk: "HIGH"/"MEDIUM" (uppercase)
+   - COUNTIF formulas must match exact casing or they return 0
+
+8. Always backup the old file before overwriting:
+   mv old.xlsx old-BACKUP.xlsx
+```
+
 ## Black Duck API Reference
 
 ### Authentication
@@ -395,4 +848,9 @@ sed -i 's|old\path|new\path|g' file
 
 ## Reference
 - PTTGC.KBS round 1: 85 op-risk → 54, 27 resolved, 0 new. Security 9→6. License 5→6 (1 BD reclassification).
-- PTTGC.KBS round 2: Baseline (71) vs version 4 (137). Op HIGH -9, Sec MEDIUM -3, 3 vulns resolved. +1 Op MED / +1 Lic HIGH from deeper scan (not code change).
+- PTTGC.KBS round 2 (waive): Baseline 20260515 1042 (71 comps) vs version 4 (137 comps).
+  - Op HIGH: 54→45 (-9), Op MED: 2→3 (+1). 15 items removed, 7 new (deeper scan).
+  - Sec HIGH: 3→3 (0), Sec MED: 6→3 (-3). 3 items removed (5.4.0/12.0.1 versions gone).
+  - Lic HIGH: 4→5 (+1, PnP.Framework — BD misclassifies MIT), Lic MED: 1→1 (0).
+  - Waive report: xlsx with Overview + 3 risk sheets + L1-L6 detail + 3 hidden baseline sheets.
+  - Old v2 was wrong: missed 6 items (AngleSharp 0.9.11, Json.NET 10.0.3, 3x Web API variants, Web Pages 3.2.7).
