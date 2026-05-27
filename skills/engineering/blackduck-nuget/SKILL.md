@@ -524,11 +524,13 @@ ws_lic.column_dimensions["I"].width = 45
 ws_lic.column_dimensions["J"].width = 45
 
 # ── OperationRisk ──
+# NOTE: Row heights and col H width are sized for BD web screenshots (~900x550px)
 ws_op = wb.create_sheet("OperationRisk")
 ws_op.sheet_properties.tabColor = "FFC000"
 op_h = ["No.", "Component", "Search Name", "Severity", "Fix", "Impact", "Mitigation", "Reference", "Remark", "TC Result\n(Agree/Disagree)"]
 for i, h in enumerate(op_h, 1): ws_op.cell(row=1, column=i, value=h)
 style_header(ws_op, 1, len(op_h))
+ws_op.row_dimensions[1].height = 32  # header row
 for idx, (comp, search, sev, fix, impact, mit, remark) in enumerate(OP_RISK, 1):
     r = idx + 1
     for c, v in enumerate([idx, comp, search, sev, fix, impact, mit, "", remark, ""], 1):
@@ -537,10 +539,17 @@ for idx, (comp, search, sev, fix, impact, mit, remark) in enumerate(OP_RISK, 1):
     ws_op.cell(row=r, column=4).fill = RED_FILL if sev == "HIGH" else YELLOW_FILL if sev == "MEDIUM" else PatternFill()
     if remark == "NEW":
         ws_op.cell(row=r, column=9).fill = NEW_FILL
+    ws_op.row_dimensions[r].height = 209  # tall rows for screenshot placement
+ws_op.column_dimensions["A"].width = 5
 ws_op.column_dimensions["B"].width = 50
 ws_op.column_dimensions["C"].width = 40
+ws_op.column_dimensions["D"].width = 12
+ws_op.column_dimensions["E"].width = 8
 ws_op.column_dimensions["F"].width = 45
 ws_op.column_dimensions["G"].width = 55
+ws_op.column_dimensions["H"].width = 66   # wide column for BD screenshots
+ws_op.column_dimensions["I"].width = 12
+ws_op.column_dimensions["J"].width = 18
 
 # ── L1..LN detail sheets ──
 for idx, (comp, sev, comm, fix, url, impact, mig, dep, ref) in enumerate(LIC_RISK, 1):
