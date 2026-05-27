@@ -247,11 +247,15 @@ Common build errors and fixes:
 When BD API is unavailable or user provides PDF exports from the BD web UI.
 
 ```
-Usage: /blackduck-nuget waive
-  → Interactive: asks user for paths step by step (preferred)
+Two modes:
 
-/blackduck-nuget waive <before-dir> <after-dir> <output.xlsx>
-  → Direct: all paths provided upfront
+Mode A — Compare (มี baseline):
+  /blackduck-nuget waive
+  /blackduck-nuget waive <before-dir> <after-dir> <output.xlsx>
+
+Mode B — Initial (ไม่มี baseline, scan ครั้งแรก):
+  /blackduck-nuget waive --initial
+  /blackduck-nuget waive --initial <scan-dir> <output.xlsx>
 ```
 
 #### 9-PREREQ. Gather Inputs (Interactive)
@@ -259,23 +263,31 @@ Usage: /blackduck-nuget waive
 ```
 If paths are not provided as arguments, ASK the user:
 
+Step 0: "มี baseline (Before) สำหรับเปรียบเทียบมั้ยครับ?"
+  → YES → Mode A (Compare): proceed to Step 1
+  → NO  → Mode B (Initial): skip to Step 2
+         Set HAS_BASELINE = False
+
+--- Mode A only ---
 Step 1: "Before (baseline) PDF folder อยู่ที่ไหนครับ?"
   → User provides path to folder containing baseline PDFs
   → Auto-discover PDFs: ls the folder, find *operationalrisk*.pdf, *licenserisk*.pdf, *securityrisk*.pdf
   → If any PDF missing, ask: "ไม่พบไฟล์ {type} risk PDF — มีไฟล์ชื่ออื่นมั้ยครับ?"
 
-Step 2: "After (current scan) PDF folder อยู่ที่ไหนครับ?"
-  → Same discovery process
+--- Both modes ---
+Step 2: "PDF folder ของ scan {ปัจจุบัน/ที่ต้องการ waive} อยู่ที่ไหนครับ?"
+  → Auto-discover: *operationalrisk*.pdf, *licenserisk*.pdf, *securityrisk*.pdf
 
 Step 3: "ต้องการบันทึกไฟล์ waive report (.xlsx) ไว้ที่ไหนครับ?"
-  → Default suggestion: same directory as After folder
+  → Default suggestion: same directory as scan folder
 
 Step 4: "มีไฟล์ waive report เก่าที่ต้องการ copy รูปมาด้วยมั้ยครับ? (optional)"
   → If yes: load old xlsx for image copying
   → If no: skip image copying
 
 Step 5: Confirm project details:
-  "Project: {name}, Baseline: {version}, Current: {version} — ถูกต้องมั้ยครับ?"
+  Mode A: "Project: {name}, Baseline: {version}, Current: {version} — ถูกต้องมั้ยครับ?"
+  Mode B: "Project: {name}, Version: {version} (initial scan, ไม่มี baseline) — ถูกต้องมั้ยครับ?"
   → Extract project name and version from PDF headers automatically
 ```
 
@@ -303,9 +315,11 @@ CRITICAL PITFALLS:
   → Lic Risk PDF is the master for license risk items
 ```
 
-#### 9B. Compare Before vs After
+#### 9B. Compare or Catalog
 
 ```
+=== Mode A (Compare — HAS_BASELINE = True) ===
+
 1. Build lookup sets from Before data:
    before_op  = {("Component Name Version", "SEVERITY"), ...}
    before_sec = {("Component Name Version", "Severity"), ...}
@@ -321,28 +335,40 @@ CRITICAL PITFALLS:
 4. Calculate deltas for Overview:
    Category    | Baseline (from Before header) | Current (COUNTIF from sheet) | Delta
    Sec HIGH    | {N}                          | =COUNTIF(...)                | =C-B
-   Sec MED     | {N}                          | =COUNTIF(...)                | =C-B
-   Op HIGH     | {N}                          | =COUNTIF(...)                | =C-B
-   Op MED      | {N}                          | =COUNTIF(...)                | =C-B
-   Lic HIGH    | {N}                          | =COUNTIF(...)                | =C-B
-   Lic MED     | {N}                          | =COUNTIF(...)                | =C-B
+   ...
+
+=== Mode B (Initial — HAS_BASELINE = False) ===
+
+1. No comparison — all items are documented as-is
+2. Remark column: leave blank (no "NEW" marking needed — everything is initial)
+3. Overview: show only "Risk | Count" (2 columns, no Baseline/Delta)
+4. Skip creating _Baseline_* hidden sheets
+5. Key Changes text: "Initial scan — ไม่มี baseline สำหรับเปรียบเทียบ"
 ```
 
 #### 9C. Excel Structure
 
 ```
-Sheet order (MUST follow this exact order):
-1. Overview            — Summary table + COUNTIF formulas + Key Changes text
-2. SecurityRisk        — All After Sec HIGH+MED items with waive justification
-3. LicenseRisk         — All After Lic HIGH+MED items with waive justification
-4. OperationRisk       — All After Op HIGH+MED items with waive justification
-5. L1..LN              — 1 detail sheet per License Risk item (title, severity, URL, screenshot)
+=== Mode A (Compare) — Sheet order ===
+1. Overview            — Summary: Risk | Baseline | Current | Delta (COUNTIF formulas)
+2. SecurityRisk        — All current Sec HIGH+MED items with waive justification
+3. LicenseRisk         — All current Lic HIGH+MED items with waive justification
+4. OperationRisk       — All current Op HIGH+MED items with waive justification
+5. L1..LN              — 1 detail sheet per License Risk item (title, severity, URL, screenshot area)
 6. _Baseline_SecRisk   — Before Sec Risk data (sheet_state="hidden")
 7. _Baseline_LicRisk   — Before Lic Risk data (sheet_state="hidden")
 8. _Baseline_OpRisk    — Before Op Risk data (sheet_state="hidden")
 9. .net48              — Optional: .NET FW compatibility screenshots
 
-Column schemas:
+=== Mode B (Initial) — Sheet order ===
+1. Overview            — Summary: Risk | Count (2 columns only, no baseline/delta)
+2. SecurityRisk        — same schema as Mode A
+3. LicenseRisk         — same schema as Mode A
+4. OperationRisk       — same schema as Mode A (Remark column left empty)
+5. L1..LN              — same as Mode A
+   (NO _Baseline_* sheets — nothing to compare against)
+
+=== Column schemas (both modes) ===
 SecurityRisk:
   No. | Component | Severity | Fix | Impact | Mitigation | Reference | TC Result(Agree/Disagree)
 
@@ -354,7 +380,7 @@ OperationRisk:
   No. | Component | Search Name | Severity | Fix | Impact | Mitigation |
   Reference | Remark | TC Result(Agree/Disagree)
 
-Baseline hidden sheets:
+Baseline hidden sheets (Mode A only):
   No. | Component | Severity | (extra columns vary)
 
 Severity casing convention:
@@ -374,6 +400,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 OUT = "<output.xlsx path>"
 OLD = "<old.xlsx path or None>"  # for image copying
+HAS_BASELINE = True  # False for initial scan (no baseline to compare)
 
 # ─── Styles ───
 HEADER_FILL = PatternFill("solid", fgColor="4472C4")
@@ -413,21 +440,20 @@ LIC_RISK = [
 
 # Operational Risk — After
 # (Component, SearchName, Severity, Fix, Impact_TH, Mitigation_TH, Remark)
-# Remark: "NEW" if not in baseline, "" if existed
+# Remark: Mode A → "NEW" if not in baseline, "" if existed
+#         Mode B → always "" (no baseline to compare)
 OP_RISK = [
-    # ... extract from After operational risk PDF
+    # ... extract from operational risk PDF
 ]
 
-# Baseline data (Before scan) — for hidden comparison sheets
+# ── Baseline data (Mode A only — skip if HAS_BASELINE=False) ──
 BASELINE_SEC = [  # (Component, Severity, VulnCount)
 ]
 BASELINE_LIC = [  # (Component, Severity, License)
 ]
 BASELINE_OP  = [  # (Component, Severity)
 ]
-
-# Header counts from Before PDF (for Overview baseline column)
-BEFORE_COUNTS = {
+BEFORE_COUNTS = {  # Header counts from Before PDF
     "sec_high": 0, "sec_med": 0,
     "op_high": 0, "op_med": 0,
     "lic_high": 0, "lic_med": 0,
@@ -450,40 +476,56 @@ ws.sheet_properties.tabColor = "4472C4"
 ws["A1"] = "Black Duck Waive Report"
 ws["A1"].font = Font(bold=True, size=14)
 ws["A3"] = f"Project: {PROJECT_NAME}"
-ws["A4"] = f"Baseline: {BASELINE_VERSION}"
-ws["A5"] = f"Current: Version {CURRENT_VERSION}"
+if HAS_BASELINE:
+    ws["A4"] = f"Baseline: {BASELINE_VERSION}"
+    ws["A5"] = f"Current: Version {CURRENT_VERSION}"
+else:
+    ws["A4"] = f"Version: {CURRENT_VERSION} (initial scan)"
 ws["A6"] = "Package versions: Visual Studio packages.config (actual installed)"
 ws["A7"] = f"Report date: {REPORT_DATE}"
 
-# Summary table row 9 = header, rows 10-15 = data
-for i, h in enumerate(["Risk", "Baseline", "Current", "Delta"], 1):
-    c = ws.cell(row=9, column=i, value=h)
-    c.font, c.fill, c.alignment, c.border = HEADER_FONT, HEADER_FILL, WRAP_CENTER, THIN_BORDER
-
-summary = [
-    ("Sec HIGH",  BEFORE_COUNTS["sec_high"], '=COUNTIF(SecurityRisk!C:C,"High")'),
-    ("Sec MED",   BEFORE_COUNTS["sec_med"],  '=COUNTIF(SecurityRisk!C:C,"Medium")'),
-    ("Op HIGH",   BEFORE_COUNTS["op_high"],  '=COUNTIF(OperationRisk!D:D,"HIGH")'),
-    ("Op MED",    BEFORE_COUNTS["op_med"],   '=COUNTIF(OperationRisk!D:D,"MEDIUM")'),
-    ("Lic HIGH",  BEFORE_COUNTS["lic_high"], '=COUNTIF(LicenseRisk!C:C,"HIGH")'),
-    ("Lic MED",   BEFORE_COUNTS["lic_med"],  '=COUNTIF(LicenseRisk!C:C,"MEDIUM")'),
+# Summary table
+countif_rows = [
+    ("Sec HIGH",  '=COUNTIF(SecurityRisk!C:C,"High")'),
+    ("Sec MED",   '=COUNTIF(SecurityRisk!C:C,"Medium")'),
+    ("Op HIGH",   '=COUNTIF(OperationRisk!D:D,"HIGH")'),
+    ("Op MED",    '=COUNTIF(OperationRisk!D:D,"MEDIUM")'),
+    ("Lic HIGH",  '=COUNTIF(LicenseRisk!C:C,"HIGH")'),
+    ("Lic MED",   '=COUNTIF(LicenseRisk!C:C,"MEDIUM")'),
 ]
-for i, (label, base, formula) in enumerate(summary, 10):
-    ws.cell(row=i, column=1, value=label).font = Font(bold=True)
-    ws.cell(row=i, column=2, value=base)
-    ws.cell(row=i, column=3, value=formula)
-    ws.cell(row=i, column=4, value=f"=C{i}-B{i}")
-    for c in range(1,5): ws.cell(row=i, column=c).border = THIN_BORDER
 
-# Key Changes text (customize per project)
-ws["A17"] = "Key Changes (Before -> After):"
-ws["A17"].font = Font(bold=True)
-# ws["A18"] = "..."  # Add specific change descriptions
+if HAS_BASELINE:
+    # Mode A: Risk | Baseline | Current | Delta
+    for i, h in enumerate(["Risk", "Baseline", "Current", "Delta"], 1):
+        c = ws.cell(row=9, column=i, value=h)
+        c.font, c.fill, c.alignment, c.border = HEADER_FONT, HEADER_FILL, WRAP_CENTER, THIN_BORDER
+    before_vals = [BEFORE_COUNTS["sec_high"], BEFORE_COUNTS["sec_med"],
+                   BEFORE_COUNTS["op_high"], BEFORE_COUNTS["op_med"],
+                   BEFORE_COUNTS["lic_high"], BEFORE_COUNTS["lic_med"]]
+    for i, ((label, formula), base) in enumerate(zip(countif_rows, before_vals), 10):
+        ws.cell(row=i, column=1, value=label).font = Font(bold=True)
+        ws.cell(row=i, column=2, value=base)
+        ws.cell(row=i, column=3, value=formula)
+        ws.cell(row=i, column=4, value=f"=C{i}-B{i}")
+        for c in range(1,5): ws.cell(row=i, column=c).border = THIN_BORDER
+    ws["A17"] = "Key Changes (Before -> After):"
+    ws["A17"].font = Font(bold=True)
+    ws.column_dimensions["D"].width = 12
+else:
+    # Mode B: Risk | Count (simpler — no comparison)
+    for i, h in enumerate(["Risk", "Count"], 1):
+        c = ws.cell(row=9, column=i, value=h)
+        c.font, c.fill, c.alignment, c.border = HEADER_FONT, HEADER_FILL, WRAP_CENTER, THIN_BORDER
+    for i, (label, formula) in enumerate(countif_rows, 10):
+        ws.cell(row=i, column=1, value=label).font = Font(bold=True)
+        ws.cell(row=i, column=2, value=formula)
+        for c in range(1,3): ws.cell(row=i, column=c).border = THIN_BORDER
+    ws["A17"] = "Initial scan — no baseline for comparison"
+    ws["A17"].font = Font(bold=True, color="808080")
 
 ws.column_dimensions["A"].width = 22
-ws.column_dimensions["B"].width = 12
-ws.column_dimensions["C"].width = 12
-ws.column_dimensions["D"].width = 12
+ws.column_dimensions["B"].width = 14
+ws.column_dimensions["C"].width = 14
 
 # ── SecurityRisk ──
 ws_sec = wb.create_sheet("SecurityRisk")
@@ -569,21 +611,22 @@ for idx, (comp, sev, comm, fix, url, impact, mig, dep, ref) in enumerate(LIC_RIS
     ws_l.column_dimensions["B"].width = 90   # wide for screenshots
     ws_l.column_dimensions["C"].width = 50   # overflow area
 
-# ── Baseline hidden sheets ──
-for name, data, cols in [
-    ("_Baseline_SecRisk", BASELINE_SEC, ["No.", "Component", "Severity", "Vuln Count"]),
-    ("_Baseline_LicRisk", BASELINE_LIC, ["No.", "Component", "Severity", "License"]),
-    ("_Baseline_OpRisk",  BASELINE_OP,  ["No.", "Component", "Severity"]),
-]:
-    ws_b = wb.create_sheet(name)
-    for i, h in enumerate(cols, 1): ws_b.cell(row=1, column=i, value=h)
-    style_header(ws_b, 1, len(cols))
-    for i, row_data in enumerate(data, 1):
-        ws_b.cell(row=i+1, column=1, value=i)
-        for c, v in enumerate(row_data, 2): ws_b.cell(row=i+1, column=c, value=v)
-        style_data(ws_b, i+1, len(cols))
-    ws_b.column_dimensions["B"].width = 55
-    ws_b.sheet_state = "hidden"
+# ── Baseline hidden sheets (Mode A only) ──
+if HAS_BASELINE:
+    for name, data, cols in [
+        ("_Baseline_SecRisk", BASELINE_SEC, ["No.", "Component", "Severity", "Vuln Count"]),
+        ("_Baseline_LicRisk", BASELINE_LIC, ["No.", "Component", "Severity", "License"]),
+        ("_Baseline_OpRisk",  BASELINE_OP,  ["No.", "Component", "Severity"]),
+    ]:
+        ws_b = wb.create_sheet(name)
+        for i, h in enumerate(cols, 1): ws_b.cell(row=1, column=i, value=h)
+        style_header(ws_b, 1, len(cols))
+        for i, row_data in enumerate(data, 1):
+            ws_b.cell(row=i+1, column=1, value=i)
+            for c, v in enumerate(row_data, 2): ws_b.cell(row=i+1, column=c, value=v)
+            style_data(ws_b, i+1, len(cols))
+        ws_b.column_dimensions["B"].width = 55
+        ws_b.sheet_state = "hidden"
 
 # ── Copy images from old workbook (if available) ──
 if OLD:
