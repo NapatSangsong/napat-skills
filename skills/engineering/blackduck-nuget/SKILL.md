@@ -551,7 +551,7 @@ ws_op.column_dimensions["H"].width = 66   # wide column for BD screenshots
 ws_op.column_dimensions["I"].width = 12
 ws_op.column_dimensions["J"].width = 18
 
-# ── L1..LN detail sheets ──
+# ── L1..LN detail sheets (sized for BD web screenshots) ──
 for idx, (comp, sev, comm, fix, url, impact, mig, dep, ref) in enumerate(LIC_RISK, 1):
     ws_l = wb.create_sheet(f"L{idx}")
     ws_l.cell(row=1, column=1, value=f"L{idx}: {comp}").font = Font(bold=True, size=12)
@@ -561,8 +561,13 @@ for idx, (comp, sev, comm, fix, url, impact, mig, dep, ref) in enumerate(LIC_RIS
     ws_l.cell(row=4, column=1, value=f"Dependency: {dep}")
     ws_l.cell(row=6, column=1, value="URL:")
     ws_l.cell(row=6, column=2, value=url)
-    ws_l.column_dimensions["A"].width = 20
-    ws_l.column_dimensions["B"].width = 80
+    ws_l.cell(row=8, column=1, value="Screenshot:").font = Font(bold=True, size=11, color="4472C4")
+    # Rows 9-10: tall rows for pasting BD web screenshots (~2400x1500px)
+    ws_l.row_dimensions[9].height = 400
+    ws_l.row_dimensions[10].height = 400
+    ws_l.column_dimensions["A"].width = 22
+    ws_l.column_dimensions["B"].width = 90   # wide for screenshots
+    ws_l.column_dimensions["C"].width = 50   # overflow area
 
 # ── Baseline hidden sheets ──
 for name, data, cols in [
