@@ -53,12 +53,13 @@ done
 | 7 | Export Variable | Yes | | variable.md |
 | 8 | Configuration | Yes | | Configuration |
 
-### Helper Workflows (2)
+### Helper Workflows (3)
 
 | Workflow | Purpose | Called by |
 |----------|--------|---------|
-| Backend - Generate Config | Copy template + sed replace for backend | WithSecret, Deploy |
-| Frontend - Generate Config | Copy template + sed replace for frontend | WithSecret, Deploy |
+| Backend - Generate Config | Copy template + sed replace for backend | WithSecret, Deploy, Configuration |
+| Frontend - Generate Config | Copy template + sed replace for frontend | WithSecret, Deploy, Configuration |
+| Frontend - Webparts Build | Build SPFx webparts (.sppkg) with env-specific config | Deploy, Configuration |
 
 ## Project Type Detection
 
@@ -115,6 +116,10 @@ run: sed -i "s|REPLACE|${CONN_STR}|g" Web.config
 | Artifact missing folder | `upload-artifact` strips single path | Use staging directory |
 | Source artifact build fails | Missing Telerik/ folder from HintPath | Check .csproj HintPath, include folder |
 | Force-push blocked | GitHub Rulesets (not branch protection) | Settings -> Rules -> Rulesets -> disable temp |
+| FE Source has REPLACE_WITH_* | Upload source BEFORE downloading config | Move "Download config" step before "Upload source" |
+| npm ci fails EUSAGE | package-lock.json out of sync after adding overrides | Delete node_modules + lock file, run `npm install` to regenerate |
+| npm transitive dep vulnerability | Parent package pins vulnerable version | Add `"qs": "6.15.2"` to `overrides` in package.json |
+| Disk full downloading FE artifacts | FE with libraries (kendoui etc.) ~159MB each | Download one at a time, zip immediately, delete before next |
 
 ## Proven Patterns
 
@@ -126,6 +131,36 @@ run: sed -i "s|REPLACE|${CONN_STR}|g" Web.config
 | Staging directory | Control artifact layout before upload |
 | `geekyeggo/delete-artifact@v5` + `if: always()` | Clean intermediate artifacts |
 | `env:` block for secrets | Prevent shell injection from special chars |
+| Download before Upload | Deploy workflow: download config artifact THEN upload source |
+| npm `overrides` for security | Fix transitive dep CVE without downgrading parent packages |
+
+## Delivery Artifact Verification
+
+When verifying artifacts for delivery, check each against its purpose:
+
+| Artifact Type | Must Have | Must NOT Have |
+|---------------|-----------|---------------|
+| Source for Scan | Test build passes | Secrets, templates, bin/obj; FE excludes libraries |
+| Source for Developer | Real config values, all libraries (FE), Telerik (BE) | Templates, bin/obj, node_modules |
+| Deploy Package (BE) | Release DLLs (WebAPI + SchedulerApp) | Templates |
+| Deploy Package (FE) | .tif files, .sppkg, config.js replaced | Templates, node_modules |
+| Configuration | All env folders, FE+BE configs per env, .sppkg per env | — |
+| Export Variable | Markdown with all vars + secrets (masked) | — |
+
+### Quick Verification Commands
+```bash
+# Check for unreplaced placeholders
+grep -rn "REPLACE_WITH" <artifact-dir>/
+
+# Check no template files
+find <artifact-dir> -name "*.template"
+
+# FE Scan: verify no libraries
+ls <fe-scan>/TLMLib/  # should only have css/, Images/, js/
+
+# FE WithSecret: verify libraries present
+ls <fe-withsecret>/TLMLib/kendoui  # should exist
+```
 
 ## .aipath Include/Exclude
 
