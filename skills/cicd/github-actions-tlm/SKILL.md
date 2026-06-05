@@ -120,6 +120,12 @@ run: sed -i "s|REPLACE|${CONN_STR}|g" Web.config
 | npm ci fails EUSAGE | package-lock.json out of sync after adding overrides | Delete node_modules + lock file, run `npm install` to regenerate |
 | npm transitive dep vulnerability | Parent package pins vulnerable version | Add `"qs": "6.15.2"` to `overrides` in package.json |
 | Disk full downloading FE artifacts | FE with libraries (kendoui etc.) ~159MB each | Download one at a time, zip immediately, delete before next |
+| `.aipath`-excluded `packages/` ships in source artifact (1.3GB / 25MB bloat) | `packages/` committed **or** restored, but only `Deploy` removed it — `Scan` & `WithSecret` did not | Add `rm -rf <proj>/packages` to **every** source-export workflow, not just Deploy |
+| WithSecret artifact has **no config** | clean step deleted `Web.config`/`config.js` after build | WithSecret must **keep** the generated real config (that is its purpose); only strip `*.template` |
+| WithSecret FE artifact **missing libraries** | clean step deleted kendoui/bootstrap/fontawesome | WithSecret **keeps** libs; only **Scan** strips them (size reduction) |
+| Deploy Package leaks `.cs` source | `Pages/` copy pulled ASMX code-behind (`*.asmx.cs`) | `find publish -name "*.cs" -delete` after staging — code-behind is compiled into `bin/` |
+| Export Variable exports non-existent secrets / misses real ones | hand-written var list drifted from the actual environment schema | Generate the list from `gh variable list` + `gh secret list`; the workflow must mirror the env exactly |
+| **Green CI run but wrong artifact** | verified run *status*, not artifact *contents* | Always inspect artifact **contents** (`unzip -l/-p`) against each requirement — a passing run says nothing about correctness |
 
 ## Proven Patterns
 
@@ -140,12 +146,13 @@ When verifying artifacts for delivery, check each against its purpose:
 
 | Artifact Type | Must Have | Must NOT Have |
 |---------------|-----------|---------------|
-| Source for Scan | Test build passes | Secrets, templates, bin/obj; FE excludes libraries |
-| Source for Developer | Real config values, all libraries (FE), Telerik (BE) | Templates, bin/obj, node_modules |
-| Deploy Package (BE) | Release DLLs (WebAPI + SchedulerApp) | Templates |
+| Source for Scan (Replace Secret = **No**) | committed/placeholder config only | Secrets/real config, templates, bin/obj, **`packages/`**; FE excludes libraries |
+| Source for Developer (Replace Secret = **Yes**) | Real config values, all libraries (FE), Telerik (BE) | Templates, bin/obj, **`packages/`**, node_modules |
+| Deploy Package (BE) | Release DLLs under `bin/`, replaced `Web.config` | Templates, **`*.cs` source** (ASMX code-behind), `packages/` |
+| Deploy source (BE) | replaced config | bin/obj, **`packages/`**, source build output |
 | Deploy Package (FE) | .tif files, .sppkg, config.js replaced | Templates, node_modules |
 | Configuration | All env folders, FE+BE configs per env, .sppkg per env | — |
-| Export Variable | Markdown with all vars + secrets (masked) | — |
+| Export Variable | Markdown with all vars + secrets — **real values, not `***`** (the artifact file holds real values; only `$GITHUB_STEP_SUMMARY` masks them) | bogus/non-existent keys |
 
 ### Quick Verification Commands
 ```bash
@@ -161,6 +168,21 @@ ls <fe-scan>/TLMLib/  # should only have css/, Images/, js/
 # FE WithSecret: verify libraries present
 ls <fe-withsecret>/TLMLib/kendoui  # should exist
 ```
+
+### Verifying without extracting (disk-safe — `unzip -l/-p` on the raw artifact zip)
+On a nearly-full disk, do NOT `gh run download` (it extracts). Pull the raw zip and inspect it:
+```bash
+aid=$(gh api repos/$R/actions/runs/$RUN/artifacts --jq '.artifacts[]|select(.name=="BE-KBS-Package").id')
+gh api repos/$R/actions/artifacts/$aid/zip > pkg.zip      # raw zip = the deliverable, no extraction
+unzip -l pkg.zip | awk '{print $4}' | grep -cE '(^|/)packages/'   # 0 expected
+unzip -p pkg.zip Web.config | grep -c REPLACE_WITH_              # 0 expected (read one file to stdout)
+```
+- **grep gotcha:** zip entries at the artifact root are printed as `packages/...`, **not** `/packages/`. Anchor with `(^|/)packages/` — a `/packages/` pattern silently misses root-level dirs and gives false "clean" passes.
+- **Size is a fast bloat proxy:** a BE source artifact that should be ~2MB but is 25MB–1.3GB almost always still contains `packages/`.
+
+### Committing workflow fixes when local `git` is unusable
+If the repo lives on a synced/slow volume (e.g. iCloud `~/Documents`) where `git status/diff/commit/fetch` hang, commit **server-side via the GitHub API**: `git/blobs` → `git/trees` (with `base_tree`) → `git/commits` → PATCH `git/refs/heads/<branch>`.
+- **Danger:** build each JSON with a temp file + `gh api --input <file>` (piping `--input -` inside `$(...)` can yield an HTML error → **empty blob sha**). A create-tree entry with an **empty `sha` silently DELETES that path** — it once wiped a workflow file. Always assert the blob sha is non-empty before creating the tree, and re-fetch the file (`contents` API) to confirm size/content after the PATCH.
 
 ## .aipath Include/Exclude
 
