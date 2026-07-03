@@ -14,6 +14,8 @@ Security-focused code review that checks JavaScript/HTML frontend code against C
 /coverity-prescan-frontend --changed-only    # Scan only git-modified files
 ```
 
+> **When to use this vs. the report-based skill:** Pre-scan runs WITHOUT a Coverity report — that's its purpose (catch issues *before* the scan exists). If the user already HAS Coverity scan results, use `coverity-frontend` instead and ask them for the report first — fixing from an actual report is more accurate than pattern-matching.
+
 ## Core Principle
 
 > **Find the SINKS, not the sanitizers.** Coverity's JS taint analysis tracks data from sources (user input, AJAX responses) to sinks (jQuery `$()`, `.html()`, `.attr()`). Sanitization functions DON'T cut taint — Coverity treats any custom function return as "unknown/tainted". The only way to pass is to **avoid the sink entirely**.

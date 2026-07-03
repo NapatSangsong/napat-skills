@@ -17,6 +17,9 @@ Sibling skill: **blackduck-nuget** (.NET Framework / NuGet). Use that for `packa
 /blackduck-frontend waive           # generate the Excel waive report for un-fixable items
 ```
 
+## ⚠️ Prerequisite — request the CSV report FIRST (before any fix or waive)
+**Always ask the user to export and provide the Black Duck CSV report before doing any remediation.** Do not work from UI screenshots or the Details-tab "Vulnerabilities" widget — they mislead (a real BDSA can look like a "phantom"). The authoritative source is the project-version CSV export (`.zip` with `security_*.csv` = exact BDSA/CVE IDs + affected versions, `project_version_upgrade_guidance_*.csv` = Black Duck's own short-term/long-term recommended fix versions, `components_*.csv` = full BOM). If the user hasn't provided it, **request it and wait** — accurate fixes and waivers depend on it. (See Phase 1 for how to read the CSVs.)
+
 ## Core principles (read first — these are the load-bearing lessons)
 
 1. **Three risk types, three different treatments.** Do not lump them together:

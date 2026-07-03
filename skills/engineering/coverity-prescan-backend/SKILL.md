@@ -15,6 +15,8 @@ Security-focused code review that checks C#/.NET backend code against all 21 Cov
 /coverity-prescan-backend --checkers RESOURCE_LEAK,CSRF  # Scan specific checker types only
 ```
 
+> **When to use this vs. the report-based skill:** Pre-scan runs WITHOUT a Coverity report — that's its purpose (catch issues *before* the scan exists). If the user already HAS Coverity scan results, use `coverity-backend` instead and ask them for the report first — fixing from an actual report is more accurate than pattern-matching.
+
 ## How It Works
 
 This is NOT a replacement for Coverity — it's a **pre-flight checklist** that catches the patterns Coverity WILL flag. Think of it as a code review guided by Coverity's checker rules.

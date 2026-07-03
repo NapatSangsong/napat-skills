@@ -14,6 +14,9 @@ Analyze Coverity scan results for frontend JavaScript/HTML code and apply proven
 /coverity-frontend learn <project-path>  # Study a passing project to learn new patterns
 ```
 
+## ⚠️ Prerequisite — request the Coverity report FIRST (before any fix)
+**Always ask the user to provide the Coverity scan report before fixing.** Do not fix from partial descriptions or screenshots. The report (HTML report dir — `summary.html` + `index*.html`, or the issue export) carries the exact checker type (DOM_XSS / URL_MANIPULATION), file, line, and Coverity's own taint event-flow per issue — the fix depends on knowing the precise sink. If the user hasn't provided the report, **request it and wait**. (If they have NO report yet and want a proactive check, use `coverity-prescan-frontend` instead.)
+
 ## Instructions
 
 ### Phase 1: Read Coverity Report

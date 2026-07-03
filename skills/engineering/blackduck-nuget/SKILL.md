@@ -16,6 +16,9 @@ Analyze Black Duck scan results for .NET Framework (4.x) NuGet projects, compare
 /blackduck-nuget waive <before-dir> <after-dir> <output.xlsx>   # Generate waive report from PDF exports
 ```
 
+## ⚠️ Prerequisite — request the report FIRST (before any fix or waive)
+**Always ask the user to export and provide the Black Duck report before doing any remediation.** Do not work from UI screenshots or the Details-tab "Vulnerabilities" widget — they mislead (a real BDSA can look like a "phantom", and version-currency can look like a vuln). The authoritative source is the project-version **CSV export** (`security_*.csv` = exact BDSA/CVE IDs + affected versions; `project_version_upgrade_guidance_*.csv` = Black Duck's own short-term/long-term recommended fix versions; `components_*.csv` = full BOM incl. Operational/License) — or, if using the API workflow below, the live API data. If the user hasn't provided the CSV/API access, **request it and wait** — accurate fixes and waivers depend on it.
+
 ## Instructions
 
 ### Phase 1: Authenticate & Discover Versions

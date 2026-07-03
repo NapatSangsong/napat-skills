@@ -14,6 +14,9 @@ Analyze Coverity scan results for C#/.NET backend code and apply proven fix patt
 /coverity-backend fix <cid-list>         # Fix only specific CIDs (comma-separated)
 ```
 
+## ⚠️ Prerequisite — request the Coverity report FIRST (before any fix)
+**Always ask the user to provide the Coverity scan report before fixing.** Do not fix from partial descriptions or screenshots. The report (HTML report dir, or issue/CID export) carries the exact checker type, file, line, CID, and Coverity's own event flow — read the detail event flow before fixing each issue. If the user hasn't provided the report, **request it and wait**. (If they have NO report yet and want a proactive check, use `coverity-prescan-backend` instead.)
+
 ## Core Principles
 
 1. **No logic changes** — code must work identically before and after
