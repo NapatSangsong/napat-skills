@@ -23,6 +23,7 @@ Claude Code custom skills for .NET / SharePoint / frontend development, engineer
 |-------|---------|-------------|
 | [`post-mortem`](skills/productivity/post-mortem/SKILL.md) | `/post-mortem` | Write the canonical engineering record of a fixed bug (RCA) |
 | [`management-talk`](skills/productivity/management-talk/SKILL.md) | `/management-talk` | Rewrite engineering content for leadership audiences (JIRA, Slack, email, meeting) |
+| [`fable-5`](skills/productivity/fable-5/SKILL.md) | `/fable-5` | Disciplined loop for hard/ambiguous tasks — decompose by verification boundaries, verify against the world, choose next by plan-change (ships `fable-scout` + `fable-refuter` agents) |
 
 ### CI/CD
 
